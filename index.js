@@ -297,6 +297,9 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // Public routes
+app.get("/", (req, res) => {
+  res.send("✅ Prezz Backend is live!");
+});
 app.use('/api/auth', authRoutes);
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 app.get(
