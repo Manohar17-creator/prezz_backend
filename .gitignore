@@ -1,0 +1,6 @@
+credentials/
+.env
+node_modules/
+.cache/
+dist/
+*.pack

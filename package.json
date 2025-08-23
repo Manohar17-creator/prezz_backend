@@ -1,0 +1,33 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google-cloud/vision": "^5.1.0",
+    "bcrypt": "^5.1.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.3.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase": "^11.8.1",
+    "firebase-admin": "^13.4.0",
+    "google-auth-library": "^9.15.1",
+    "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
+    "moment-timezone": "^0.6.0",
+    "multer": "^2.0.0",
+    "nanoid": "^5.1.5",
+    "nodemailer": "^6.10.1",
+    "passport": "^0.6.0",
+    "passport-google-oauth20": "^2.0.0",
+    "pg": "^8.11.3",
+    "sanitize-filename": "^1.6.3",
+    "sharp": "^0.34.2",
+    "tesseract.js": "^6.0.1"
+  }
+}
