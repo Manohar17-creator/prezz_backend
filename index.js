@@ -35,6 +35,19 @@ const pool = new Pool({
   },
 });
 
+const schema = fs.readFileSync("./schema.sql", "utf8");
+
+async function initDB() {
+  try {
+    await pool.query(schema);
+    console.log("✅ Database schema ensured");
+  } catch (err) {
+    console.error("❌ Error initializing DB:", err);
+  }
+}
+
+initDB();
+
 let materials = [
   { id: 1, filename: 'Lecture Notes Week 1.pdf', subject_id: 1, subject_name: 'Mathematics', category_id: 1, uploaded_by: 1, created_at: '2025-06-01' },
   { id: 2, filename: 'ML Assignment 1.pdf', subject_id: 'elective_1', subject_name: 'Machine Learning', category_id: 2, uploaded_by: 2, created_at: '2025-06-02', elective_id: 1 }
