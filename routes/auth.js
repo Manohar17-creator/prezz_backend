@@ -9,9 +9,16 @@ const admin = require('firebase-admin');
 const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config();
 
+// ✅ Load Firebase service account from env variable
 if (!admin.apps.length) {
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    console.error("Missing GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable");
+    process.exit(1);
+  }
+  const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+
   admin.initializeApp({
-    credential: admin.credential.cert(require('/Users/manoharkandula/Downloads/service-account-key.json')),
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
@@ -35,7 +42,7 @@ const createFirebaseUser = async (email, password, userId) => {
       firebaseUser = await admin.auth().createUser({
         uid: userId.toString(),
         email,
-        password,
+        password: password || undefined, // Firebase requires password only if set
       });
     }
     return firebaseUser;
@@ -45,6 +52,7 @@ const createFirebaseUser = async (email, password, userId) => {
   }
 };
 
+// ------------------- LOGIN -------------------
 router.post('/login', async (req, res) => {
   console.log('Login request received:', { email: req.body.email });
   console.time('login');
@@ -54,36 +62,22 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    console.time('db-query');
     const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    console.timeEnd('db-query');
     const user = userResult.rows[0];
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    console.time('bcrypt-compare');
     const validPassword = await bcrypt.compare(password, user.password);
-    console.timeEnd('bcrypt-compare');
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
 
-    console.time('firebase-token');
     const customToken = await admin.auth().createCustomToken(user.id.toString(), {
       role: user.role,
       class_code: user.class_code,
       cr_type: user.cr_type
     });
-    console.timeEnd('firebase-token');
 
-    console.time('firestore-check');
     const userRef = db.collection('users').doc(user.id.toString());
     const userDoc = await userRef.get();
-    console.timeEnd('firestore-check');
-
     if (!userDoc.exists) {
-      console.time('firestore-write');
       await userRef.set({
         email: user.email,
         role: user.role,
@@ -91,7 +85,6 @@ router.post('/login', async (req, res) => {
         cr_type: user.cr_type || null,
         last_login: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
-      console.timeEnd('firestore-write');
     }
 
     res.json({
@@ -111,6 +104,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ------------------- REGISTER -------------------
 router.post('/register', async (req, res) => {
   const { email, username, roll_no, room_no, password, role, class_code } = req.body;
 
@@ -129,15 +123,14 @@ router.post('/register', async (req, res) => {
     );
 
     const user = newUser.rows[0];
-
     await createFirebaseUser(email, password, user.id);
 
     await db.collection('users').doc(user.id.toString()).set({
-      class_code: class_code,
-      email: email,
-      username: username,
-      roll_no: roll_no,
-      room_no: room_no,
+      class_code,
+      email,
+      username,
+      roll_no,
+      room_no,
       role: role.toUpperCase(),
       is_approved: isApproved,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -152,6 +145,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// ------------------- GOOGLE AUTH -------------------
 router.get('/auth/google/callback', async (req, res) => {
   try {
     const { code } = req.query;
@@ -159,7 +153,7 @@ router.get('/auth/google/callback', async (req, res) => {
       code,
       client_id: process.env.GOOGLE_CLIENT_ID,
       client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: `${API_URL}/auth/google/callback`,
+      redirect_uri: `${process.env.API_URL}/auth/google/callback`,
     });
     const ticket = await client.verifyIdToken({
       idToken: tokens.id_token,
@@ -196,15 +190,14 @@ router.get('/auth/google/callback', async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    res.redirect(`http://localhost:3000/login?token=${customToken}`);
+    res.redirect(`${process.env.CLIENT_URL}/login?token=${customToken}`);
   } catch (error) {
     console.error('Google auth error:', error);
     res.status(400).send('Google authentication failed');
   }
 });
 
-
-
+// ------------------- ADMIN ROUTES -------------------
 router.get('/pending-users', async (req, res) => {
   const userEmail = req.headers['user-email'];
   try {
@@ -250,20 +243,17 @@ router.post('/approve-user', async (req, res) => {
   }
 });
 
+// ------------------- PASSWORD RESET -------------------
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
   try {
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
+    if (!email) return res.status(400).json({ error: 'Email is required' });
 
     const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (user.rows.length === 0) {
-      return res.status(400).json({ error: 'User not found' });
-    }
+    if (user.rows.length === 0) return res.status(400).json({ error: 'User not found' });
 
     const token = jwt.sign({ id: user.rows[0].id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const resetLink = `http://localhost:3000/reset-password/${token}`;
+    const resetLink = `${process.env.CLIENT_URL}/reset-password/${token}`;
 
     await transporter.sendMail({
       to: email,
