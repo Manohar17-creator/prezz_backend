@@ -28,7 +28,12 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 
 // Database connection
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // required for Render external DBs
+  },
+});
 
 let materials = [
   { id: 1, filename: 'Lecture Notes Week 1.pdf', subject_id: 1, subject_name: 'Mathematics', category_id: 1, uploaded_by: 1, created_at: '2025-06-01' },
