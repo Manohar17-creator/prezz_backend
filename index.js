@@ -36,6 +36,8 @@ const pool = new Pool({
 });
 
 const schema = fs.readFileSync("./schema.sql", "utf8");
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
 
 async function initDB() {
   try {
@@ -340,16 +342,16 @@ app.get(
     // Redirect based on role
     const role = req.user.role.toUpperCase();
     const crType = req.user.cr_type?.toLowerCase(); // ✅ safer
-    if (role === 'CR') {
+        if (role === 'CR') {
       if (crType === 'regular') {
-        res.redirect('http://localhost:3000/regular-cr-dashboard');
+        res.redirect(`${FRONTEND_URL}/regular-cr-dashboard`);
       } else if (crType === 'elective') {
-        res.redirect('http://localhost:3000/elective-cr-dashboard');
+        res.redirect(`${FRONTEND_URL}/elective-cr-dashboard`);
       } else {
-        res.redirect('http://localhost:3000/dashboard'); // Fallback
+        res.redirect(`${FRONTEND_URL}/dashboard`); // Fallback
       }
     } else {
-      res.redirect('http://localhost:3000/student-dashboard');
+      res.redirect(`${FRONTEND_URL}/student-dashboard`);
     }
   }
 );
@@ -563,6 +565,20 @@ app.post('/api/cr-register', async (req, res) => {
   }
 });
 
+app.post('/api/auth/custom-token', async (req, res) => {
+  const { uid } = req.body;
+  if (!uid) return res.status(400).json({ error: 'UID required' });
+
+  try {
+    const token = await admin.auth().createCustomToken(uid);
+    res.json({ token });
+  } catch (err) {
+    console.error('Error creating custom token:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 // Forgot Password endpoint
 app.post('/api/forgot-password', async (req, res) => {
   const { email } = req.body;
@@ -581,7 +597,7 @@ app.post('/api/forgot-password', async (req, res) => {
       'UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE id = $3',
       [resetToken, expires, user.id]
     );
-    const resetUrl = `http://localhost:3000/reset-password?token=${resetToken}`;
+    const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
