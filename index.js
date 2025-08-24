@@ -567,14 +567,20 @@ app.post('/api/cr-register', async (req, res) => {
 
 app.post('/api/auth/custom-token', async (req, res) => {
   const { uid } = req.body;
-  if (!uid) return res.status(400).json({ error: 'UID required' });
+
+  if (!uid) {
+    console.warn('Custom token request missing uid');
+    return res.status(400).json({ error: 'UID is required to generate custom token' });
+  }
 
   try {
+    // Create Firebase custom token
     const token = await admin.auth().createCustomToken(uid);
-    res.json({ token });
+    console.log(`Custom token generated for uid: ${uid}`);
+    return res.json({ token });
   } catch (err) {
-    console.error('Error creating custom token:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error creating Firebase custom token:', err);
+    return res.status(500).json({ error: 'Internal server error: could not create custom token' });
   }
 });
 
