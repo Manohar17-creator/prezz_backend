@@ -53,56 +53,63 @@ const createFirebaseUser = async (email, password, userId) => {
 };
 
 // ------------------- LOGIN -------------------
-router.post('/login', async (req, res) => {
-  console.log('Login request received:', { email: req.body.email });
-  console.time('login');
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
 
-    const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    const user = userResult.rows[0];
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const customToken = await admin.auth().createCustomToken(user.id.toString(), {
-      role: user.role,
-      class_code: user.class_code,
-      cr_type: user.cr_type
-    });
-
-    const userRef = db.collection('users').doc(user.id.toString());
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) {
-      await userRef.set({
-        email: user.email,
-        role: user.role,
-        class_code: user.class_code || null,
-        cr_type: user.cr_type || null,
-        last_login: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
-
-    res.json({
-      token: customToken,
-      role: user.role.toUpperCase(),
-      user_id: user.id,
-      classcode: user.class_code || '',
-      cr_type: user.cr_type || '',
-      cr_elective_id: user.cr_elective_id || '',
-      username: user.username || user.email
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error during authentication' });
-  } finally {
-    console.timeEnd('login');
-  }
+router.post('/login', (req, res) => {
+  console.log("Login test hit:", req.body);
+  return res.json({ message: "Login route works!", received: req.body });
 });
+
+
+// router.post('/login', async (req, res) => {
+//   console.log('Login request received:', { email: req.body.email });
+//   console.time('login');
+//   try {
+//     const { email, password } = req.body;
+//     if (!email || !password) {
+//       return res.status(400).json({ error: 'Email and password are required' });
+//     }
+
+//     const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+//     const user = userResult.rows[0];
+//     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+//     const validPassword = await bcrypt.compare(password, user.password);
+//     if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
+
+//     const customToken = await admin.auth().createCustomToken(user.id.toString(), {
+//       role: user.role,
+//       class_code: user.class_code,
+//       cr_type: user.cr_type
+//     });
+
+//     const userRef = db.collection('users').doc(user.id.toString());
+//     const userDoc = await userRef.get();
+//     if (!userDoc.exists) {
+//       await userRef.set({
+//         email: user.email,
+//         role: user.role,
+//         class_code: user.class_code || null,
+//         cr_type: user.cr_type || null,
+//         last_login: admin.firestore.FieldValue.serverTimestamp()
+//       }, { merge: true });
+//     }
+
+//     res.json({
+//       token: customToken,
+//       role: user.role.toUpperCase(),
+//       user_id: user.id,
+//       classcode: user.class_code || '',
+//       cr_type: user.cr_type || '',
+//       cr_elective_id: user.cr_elective_id || '',
+//       username: user.username || user.email
+//     });
+//   } catch (error) {
+//     console.error('Login error:', error);
+//     res.status(500).json({ error: 'Server error during authentication' });
+//   } finally {
+//     console.timeEnd('login');
+//   }
+// });
 
 // ------------------- REGISTER -------------------
 router.post('/register', async (req, res) => {
