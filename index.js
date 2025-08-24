@@ -118,148 +118,210 @@ const restrictTo = (roles) => (req, res, next) => {
 };
 
 
-const connectWithRetry = async (retries = 5, delay = 5000) => {
+const runMigrations = async (client) => {
+  const migrationSQL = `
+-- -----------------------------
+-- Users table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(50),
+    roll_no VARCHAR(20),
+    class_code VARCHAR(10),
+    college VARCHAR(100),
+    branch VARCHAR(50),
+    section VARCHAR(10),
+    semester VARCHAR(20),
+    password TEXT,
+    role VARCHAR(20) DEFAULT 'STUDENT',
+    is_cr BOOLEAN DEFAULT FALSE,
+    cr_type VARCHAR(20),
+    cr_elective_id INTEGER,
+    reset_password_token VARCHAR(100),
+    reset_password_expires BIGINT,
+    semester_start_date DATE,
+    semester_end_date DATE
+);
+
+-- -----------------------------
+-- Add missing columns to users
+-- -----------------------------
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS college VARCHAR(100),
+ADD COLUMN IF NOT EXISTS branch VARCHAR(50),
+ADD COLUMN IF NOT EXISTS section VARCHAR(10),
+ADD COLUMN IF NOT EXISTS semester VARCHAR(20),
+ADD COLUMN IF NOT EXISTS is_cr BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS cr_elective_id INTEGER;
+
+-- -----------------------------
+-- Class codes table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS class_codes (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(6) UNIQUE NOT NULL,
+    college VARCHAR(100) NOT NULL,
+    branch VARCHAR(50) NOT NULL,
+    section VARCHAR(10) NOT NULL,
+    created_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- -----------------------------
+-- Subjects table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS subjects (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    classcode VARCHAR(10) NOT NULL
+);
+
+-- -----------------------------
+-- Professors table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS professors (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    created_by INTEGER REFERENCES users(id)
+);
+
+-- -----------------------------
+-- Subject_Professors table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS subject_professors (
+    subject_id INTEGER REFERENCES subjects(id),
+    professor_id INTEGER REFERENCES professors(id),
+    PRIMARY KEY (subject_id, professor_id)
+);
+
+-- -----------------------------
+-- Electives table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS electives (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    is_open BOOLEAN NOT NULL,
+    branch VARCHAR(50),
+    cr_id INTEGER REFERENCES users(id),
+    semester VARCHAR(20) NOT NULL,
+    college VARCHAR(100),
+    professor VARCHAR(100),
+    schedule JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_cr_per_elective UNIQUE (cr_id)
+);
+
+-- -----------------------------
+-- Student electives table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS student_electives (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES users(id),
+    elective_id INTEGER REFERENCES electives(id),
+    status VARCHAR(20) DEFAULT 'enrolled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, elective_id)
+);
+
+-- -----------------------------
+-- Categories table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    subject_id INTEGER REFERENCES subjects(id),
+    created_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE categories
+ADD COLUMN IF NOT EXISTS elective_id INTEGER REFERENCES electives(id);
+
+-- -----------------------------
+-- Materials table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS materials (
+    id SERIAL PRIMARY KEY,
+    filename VARCHAR(255),
+    path VARCHAR(255),
+    url TEXT,
+    classcode VARCHAR(10),
+    elective_id INTEGER REFERENCES electives(id),
+    subject_id INTEGER REFERENCES subjects(id),
+    category_id INTEGER REFERENCES categories(id),
+    uploaded_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- -----------------------------
+-- Class schedules table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS class_schedules (
+    id SERIAL PRIMARY KEY,
+    class_code VARCHAR(10),
+    subject_id INTEGER REFERENCES subjects(id),
+    elective_id INTEGER REFERENCES electives(id),
+    specific_date DATE,
+    time_slot_id INTEGER,
+    repeat_option VARCHAR(20),
+    canceled BOOLEAN DEFAULT FALSE,
+    day_of_week VARCHAR(20),
+    start_date DATE,
+    end_date DATE
+);
+
+-- -----------------------------
+-- Time slots table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS time_slots (
+    id SERIAL PRIMARY KEY,
+    class_code VARCHAR(10),
+    start_time TIME,
+    end_time TIME
+);
+
+-- -----------------------------
+-- Holidays table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS holidays (
+    id SERIAL PRIMARY KEY,
+    class_code VARCHAR(10),
+    holiday_date DATE,
+    description TEXT,
+    created_by INTEGER REFERENCES users(id)
+);
+
+-- -----------------------------
+-- Attendance table
+-- -----------------------------
+CREATE TABLE IF NOT EXISTS attendance (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES users(id),
+    class_id INTEGER REFERENCES class_schedules(id),
+    date DATE,
+    status VARCHAR(20),
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
+  await client.query(migrationSQL);
+  console.log('✅ All tables and columns ensured successfully!');
+};
+
+export const connectWithRetry = async (retries = 5, delay = 5000) => {
   for (let i = 0; i < retries; i++) {
     try {
       const client = await pool.connect();
       await client.query("SET TIME ZONE 'Asia/Kolkata'");
-      // Create tables
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS class_codes (
-          id SERIAL PRIMARY KEY,
-          code VARCHAR(6) UNIQUE NOT NULL,
-          college VARCHAR(100) NOT NULL,
-          branch VARCHAR(50) NOT NULL,
-          section VARCHAR(10) NOT NULL,
-          created_by INTEGER REFERENCES users(id),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS subjects (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          classcode VARCHAR(10) NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS professors (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          created_by INTEGER REFERENCES users(id)
-        );
-        CREATE TABLE IF NOT EXISTS subject_professors (
-          subject_id INTEGER REFERENCES subjects(id),
-          professor_id INTEGER REFERENCES professors(id),
-          PRIMARY KEY (subject_id, professor_id)
-        );
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          email VARCHAR(255) UNIQUE NOT NULL,
-          username VARCHAR(50),
-          roll_no VARCHAR(20),
-          class_code VARCHAR(10),
-          college VARCHAR(100),
-          branch VARCHAR(50),                         
-          section VARCHAR(10),
-          semester VARCHAR(20),
-          password TEXT,
-          role VARCHAR(20) DEFAULT 'STUDENT',
-          is_cr BOOLEAN DEFAULT FALSE,
-          cr_type VARCHAR(20),
-          cr_elective_id INTEGER,
-          reset_password_token VARCHAR(100),
-          reset_password_expires BIGINT,
-          semester_start_date DATE,
-          semester_end_date DATE
-        );
-        CREATE TABLE IF NOT EXISTS electives (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          is_open BOOLEAN NOT NULL,
-          branch VARCHAR(50),
-          cr_id INTEGER REFERENCES users(id),
-          semester VARCHAR(20) NOT NULL,
-          college VARCHAR(100),
-          professor VARCHAR(100),
-          schedule JSONB,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT unique_cr_per_elective UNIQUE (cr_id)
-        );
-        CREATE TABLE IF NOT EXISTS student_electives (
-          id SERIAL PRIMARY KEY,
-          student_id INTEGER REFERENCES users(id),
-          elective_id INTEGER REFERENCES electives(id),
-          status VARCHAR(20) DEFAULT 'enrolled',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE (student_id, elective_id)
-        );
-        CREATE TABLE IF NOT EXISTS categories (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          subject_id INTEGER REFERENCES subjects(id),
-          created_by INTEGER REFERENCES users(id),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        ALTER TABLE categories
-        ADD COLUMN IF NOT EXISTS elective_id INTEGER REFERENCES electives(id);
-        CREATE TABLE IF NOT EXISTS materials (
-          id SERIAL PRIMARY KEY,
-          filename VARCHAR(255),
-          path VARCHAR(255),
-          url TEXT,
-          classcode VARCHAR(10),
-          elective_id INTEGER REFERENCES electives(id),
-          subject_id INTEGER REFERENCES subjects(id),
-          category_id INTEGER REFERENCES categories(id),
-          uploaded_by INTEGER REFERENCES users(id),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS class_schedules (
-          id SERIAL PRIMARY KEY,
-          class_code VARCHAR(10),
-          subject_id INTEGER REFERENCES subjects(id),
-          elective_id INTEGER REFERENCES electives(id),
-          specific_date DATE,
-          time_slot_id INTEGER,
-          repeat_option VARCHAR(20),
-          canceled BOOLEAN DEFAULT FALSE,
-          day_of_week VARCHAR(20),
-          start_date DATE,
-          end_date DATE
-        );
-        CREATE TABLE IF NOT EXISTS time_slots (
-          id SERIAL PRIMARY KEY,
-          class_code VARCHAR(10),
-          start_time TIME,
-          end_time TIME
-        );
-        CREATE TABLE IF NOT EXISTS holidays (
-          id SERIAL PRIMARY KEY,
-          class_code VARCHAR(10),
-          holiday_date DATE,
-          description TEXT,
-          created_by INTEGER REFERENCES users(id)
-        );
-        CREATE TABLE IF NOT EXISTS attendance (
-          id SERIAL PRIMARY KEY,
-          student_id INTEGER REFERENCES users(id),
-          class_id INTEGER REFERENCES class_schedules(id),
-          date DATE,
-          status VARCHAR(20),
-          reason TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      // Ensure category_id column exists in materials
-
-      await client.query(`
-        ALTER TABLE materials
-        ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id);
-      `);
+      await runMigrations(client); // run migrations on startup
       client.release();
-      console.log('Successfully connected to PostgreSQL database, set timezone to IST, and ensured required tables exist');
-      return;
+      console.log('✅ Successfully connected to PostgreSQL and ensured tables exist');
+      return pool; // return the pool for further queries
     } catch (err) {
-      console.error(`Failed to connect to PostgreSQL database (attempt ${i + 1}/${retries}):`, err);
+      console.error(`Failed to connect to PostgreSQL (attempt ${i + 1}/${retries}):`, err);
       if (i === retries - 1) {
-        console.error('Max retries reached. Exiting...');
+        console.error('❌ Max retries reached. Exiting...');
         process.exit(1);
       }
       await new Promise(resolve => setTimeout(resolve, delay));
